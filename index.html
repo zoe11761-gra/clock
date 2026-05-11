@@ -363,7 +363,56 @@
     letter-spacing: 0.06em;
   }
 
-  /* ── 吐司提示 ── */
+  /* ── 自動打卡覆蓋層 ── */
+  .ap-overlay {
+    position: fixed; inset: 0; z-index: 500;
+    background: rgba(248,244,239,0.92);
+    backdrop-filter: blur(12px);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .ap-overlay.open { opacity: 1; pointer-events: all; }
+  .ap-card {
+    text-align: center; padding: 48px 40px;
+    background: var(--warm-white);
+    border: 1px solid var(--taupe);
+    border-radius: 24px;
+    box-shadow: 0 8px 40px rgba(61,43,31,0.12);
+    transform: scale(0.9);
+    transition: transform 0.3s cubic-bezier(0.16,1,0.3,1);
+    min-width: 240px;
+  }
+  .ap-overlay.open .ap-card { transform: scale(1); }
+  .ap-icon {
+    font-size: 48px; margin-bottom: 16px;
+    font-family: 'EB Garamond', serif;
+    color: var(--copper);
+    display: block;
+    animation: popIn 0.4s cubic-bezier(0.16,1,0.3,1);
+  }
+  @keyframes popIn {
+    from { transform: scale(0.5); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+  }
+  .ap-title {
+    font-family: 'EB Garamond', serif;
+    font-size: 22px; font-weight: 600;
+    color: var(--espresso); margin-bottom: 8px;
+    letter-spacing: 0.02em;
+  }
+  .ap-sub {
+    font-family: 'EB Garamond', serif;
+    font-size: 32px; font-weight: 500;
+    color: var(--copper); letter-spacing: 0.04em;
+    margin-bottom: 20px;
+  }
+  .ap-hint {
+    font-size: 11px; color: var(--taupe);
+    letter-spacing: 0.08em;
+  }
+
+  /* ── Toast ── */
   .toast {
     position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
     background: var(--espresso); color: var(--warm-white);
@@ -504,6 +553,16 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- 自動打卡覆蓋層 -->
+<div class="ap-overlay" id="autoPunchOverlay">
+  <div class="ap-card">
+    <div class="ap-icon" id="apIcon">▶</div>
+    <div class="ap-title" id="apTitle">打卡完成</div>
+    <div class="ap-sub"   id="apSub">09:02</div>
+    <div class="ap-hint">3 秒後自動關閉</div>
+  </div>
+</div>
+
 <script>
 // ── 資料結構 ──────────────────────────────────────────────
 const STORE_KEY = 'attendance_v1';
@@ -552,6 +611,23 @@ function init() {
   updateTodayDisplay(today);
   renderCalendar(now.getFullYear(), now.getMonth());
   renderLog();
+
+  // ── URL 參數自動打卡 ──────────────────────────────────────
+  const params = new URLSearchParams(window.location.search);
+  const action = params.get('action');
+  if (action === 'in' || action === 'out') {
+    const rec = loadData()[tk] || {};
+    if (action === 'in' && rec.in) {
+      showAutoPunch('already', 'in', rec.in);
+    } else if (action === 'out' && rec.out) {
+      showAutoPunch('already', 'out', rec.out);
+    } else if (action === 'out' && !rec.in) {
+      showAutoPunch('error', 'out', null);
+    } else {
+      punch(action, true);
+    }
+    history.replaceState({}, '', window.location.pathname);
+  }
 }
 
 function updateTodayDisplay(today) {
@@ -584,7 +660,7 @@ function updateTodayDisplay(today) {
 }
 
 // ── 打卡動作 ──────────────────────────────────────────────
-function punch(type) {
+function punch(type, silent = false) {
   const tk = todayKey();
   const data = loadData();
   if (!data[tk]) data[tk] = {};
@@ -594,7 +670,40 @@ function punch(type) {
   updateTodayDisplay(data[tk]);
   renderCalendar(new Date().getFullYear(), new Date().getMonth());
   renderLog();
-  showToast(type === 'in' ? `▶ 抵達打卡  ${t}` : `◀ 離開打卡  ${t}`);
+  if (silent) {
+    showAutoPunch('success', type, t);
+  } else {
+    showToast(type === 'in' ? `▶ 抵達打卡  ${t}` : `◀ 離開打卡  ${t}`);
+  }
+}
+
+// ── 自動打卡覆蓋層 ────────────────────────────────────────
+function showAutoPunch(status, type, time) {
+  const overlay = document.getElementById('autoPunchOverlay');
+  const icon    = document.getElementById('apIcon');
+  const title   = document.getElementById('apTitle');
+  const sub     = document.getElementById('apSub');
+
+  if (status === 'success') {
+    icon.textContent  = type === 'in' ? '▶' : '◀';
+    icon.style.color  = 'var(--copper)';
+    title.textContent = type === 'in' ? '抵達打卡完成' : '離開打卡完成';
+    sub.textContent   = time;
+  } else if (status === 'already') {
+    icon.textContent  = '✓';
+    icon.style.color  = 'var(--sand)';
+    title.textContent = '已打卡';
+    sub.textContent   = `${type === 'in' ? '進入' : '離開'}時間：${time}`;
+  } else {
+    icon.textContent  = '！';
+    icon.style.color  = '#9B3A35';
+    title.textContent = '尚未打進入卡';
+    sub.textContent   = '請先完成抵達打卡';
+  }
+
+  overlay.classList.add('open');
+  // 3 秒後自動收起
+  setTimeout(() => overlay.classList.remove('open'), 3000);
 }
 
 // ── 月曆渲染 ──────────────────────────────────────────────
