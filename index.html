@@ -128,6 +128,66 @@
     opacity: 0.35; cursor: default; transform: none !important;
   }
 
+  /* ── 月曆導航 ── */
+  .cal-nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 20px 12px;
+  }
+  .cal-nav-btn {
+    width: 40px; height: 40px;
+    border: 1px solid var(--taupe); border-radius: 50%;
+    background: var(--warm-white); color: var(--espresso);
+    font-size: 20px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; flex-shrink: 0;
+    font-family: 'EB Garamond', serif;
+  }
+  .cal-nav-btn:active { background: var(--cream2); transform: scale(0.93); }
+  .cal-nav-center { text-align: center; flex: 1; }
+  .cal-nav-title {
+    font-family: 'EB Garamond', serif;
+    font-size: 18px; font-style: italic; color: var(--espresso);
+    letter-spacing: 0.04em;
+  }
+  .cal-back-today {
+    font-size: 11px; color: var(--copper);
+    border: none; background: none;
+    font-family: 'Noto Serif TC', serif;
+    cursor: pointer; margin-top: 4px;
+    letter-spacing: 0.04em; opacity: 1;
+    transition: opacity 0.2s;
+  }
+  .cal-back-today.hidden { opacity: 0; pointer-events: none; }
+
+  /* ── 流水明細月份分組 ── */
+  .month-group { margin-bottom: 6px; }
+  .month-group-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px 10px;
+    cursor: pointer; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .month-group-title {
+    font-family: 'EB Garamond', serif;
+    font-size: 15px; font-style: italic;
+    color: var(--sand); letter-spacing: 0.06em;
+  }
+  .month-group-meta {
+    font-size: 11px; color: var(--taupe);
+    letter-spacing: 0.04em;
+  }
+  .month-group-body {
+    padding: 0 20px;
+    display: flex; flex-direction: column; gap: 8px;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+  .month-group-body.collapsed { max-height: 0 !important; padding-bottom: 0; }
+  .month-divider {
+    height: 1px; background: var(--mist);
+    margin: 8px 20px 0;
+  }
+
   /* ── 區塊標題 ── */
   .section-head {
     display: flex; justify-content: space-between; align-items: center;
@@ -493,9 +553,13 @@
 
 <!-- 月曆面板 -->
 <div class="panel active" id="panel-cal">
-  <div class="section-head">
-    <div class="section-title" id="calTitle">五月 2026</div>
-    <button class="section-action" onclick="openModal()">＋ 補打卡</button>
+  <div class="cal-nav">
+    <button class="cal-nav-btn" onclick="changeMonth(-1)">‹</button>
+    <div class="cal-nav-center">
+      <div class="cal-nav-title" id="calTitle">五月 2026</div>
+      <button class="cal-back-today" id="backToday" onclick="goToday()">回到本月</button>
+    </div>
+    <button class="cal-nav-btn" onclick="changeMonth(1)">›</button>
   </div>
   <div class="calendar-wrap">
     <div class="cal-grid" id="calGrid"></div>
@@ -513,6 +577,9 @@
       <div class="stat-num" id="statAvg">0.0</div>
       <div class="stat-lbl">日均 h</div>
     </div>
+  </div>
+  <div style="text-align:center;padding:16px 0 4px;">
+    <button class="section-action" onclick="openModal()">＋ 補打卡</button>
   </div>
 </div>
 
@@ -588,31 +655,33 @@ function calcHours(inT, outT) {
 
 // ── 初始化 ────────────────────────────────────────────────
 const DOW_CN = ['日','一','二','三','四','五','六'];
+const MONTHS_TC = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
 const MONTHS_EN = ['January','February','March','April','May','June',
                    'July','August','September','October','November','December'];
 
+// 當前月曆顯示的年月（與今日分離）
+let calYear, calMonth;
+
 function init() {
   const now = new Date();
+  calYear  = now.getFullYear();
+  calMonth = now.getMonth();
   const tk = todayKey();
   const data = loadData();
   const today = data[tk] || {};
 
-  // 標題
   document.getElementById('headerSub').textContent =
     `${now.getFullYear()} 年 ${now.getMonth()+1} 月`;
   document.getElementById('monthBadge').textContent =
     `${MONTHS_EN[now.getMonth()].slice(0,3)} ${now.getFullYear()}`;
   document.getElementById('todayDate').textContent =
     `${now.getMonth()+1} 月 ${now.getDate()} 日　星期${DOW_CN[now.getDay()]}`;
-  document.getElementById('calTitle').textContent =
-    `${now.getMonth()+1} 月 ${now.getFullYear()}`;
 
-  // 今日顯示
   updateTodayDisplay(today);
-  renderCalendar(now.getFullYear(), now.getMonth());
+  renderCalendar(calYear, calMonth);
   renderLog();
 
-  // ── URL 參數自動打卡 ──────────────────────────────────────
+  // URL 參數自動打卡
   const params = new URLSearchParams(window.location.search);
   const action = params.get('action');
   if (action === 'in' || action === 'out') {
@@ -628,6 +697,27 @@ function init() {
     }
     history.replaceState({}, '', window.location.pathname);
   }
+}
+
+// ── 月曆導航 ──────────────────────────────────────────────
+function changeMonth(delta) {
+  calMonth += delta;
+  if (calMonth > 11) { calMonth = 0;  calYear++; }
+  if (calMonth < 0)  { calMonth = 11; calYear--; }
+  renderCalendar(calYear, calMonth);
+}
+
+function goToday() {
+  const now = new Date();
+  calYear  = now.getFullYear();
+  calMonth = now.getMonth();
+  renderCalendar(calYear, calMonth);
+}
+
+function updateBackTodayBtn(year, month) {
+  const now = new Date();
+  const isNow = year === now.getFullYear() && month === now.getMonth();
+  document.getElementById('backToday').classList.toggle('hidden', isNow);
 }
 
 function updateTodayDisplay(today) {
@@ -668,7 +758,7 @@ function punch(type, silent = false) {
   data[tk][type === 'in' ? 'in' : 'out'] = t;
   saveData(data);
   updateTodayDisplay(data[tk]);
-  renderCalendar(new Date().getFullYear(), new Date().getMonth());
+  renderCalendar(calYear, calMonth);
   renderLog();
   if (silent) {
     showAutoPunch('success', type, t);
@@ -712,6 +802,11 @@ function renderCalendar(year, month) {
   const grid = document.getElementById('calGrid');
   grid.innerHTML = '';
 
+  // 更新標題與回本月按鈕
+  document.getElementById('calTitle').textContent =
+    `${MONTHS_TC[month]}　${year}`;
+  updateBackTodayBtn(year, month);
+
   const DOW_LABELS = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
   DOW_LABELS.forEach((d,i) => {
     const el = document.createElement('div');
@@ -720,7 +815,7 @@ function renderCalendar(year, month) {
     grid.appendChild(el);
   });
 
-  const firstDay = new Date(year, month, 1).getDay();
+  const firstDay    = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month+1, 0).getDate();
   const daysInPrev  = new Date(year, month, 0).getDate();
   const todayD = new Date().getDate();
@@ -728,14 +823,10 @@ function renderCalendar(year, month) {
   const todayY = new Date().getFullYear();
 
   let totalDays = 0, totalHours = 0;
-  // 統計本月
   for (let d = 1; d <= daysInMonth; d++) {
     const k = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const rec = data[k];
-    if (rec && rec.in && rec.out) {
-      totalDays++;
-      totalHours += calcHours(rec.in, rec.out);
-    }
+    if (rec && rec.in && rec.out) { totalDays++; totalHours += calcHours(rec.in, rec.out); }
   }
 
   // 上月填充
@@ -779,7 +870,7 @@ function renderCalendar(year, month) {
   }
 
   // 補下月
-  const total = firstDay + daysInMonth;
+  const total  = firstDay + daysInMonth;
   const remain = (7 - total % 7) % 7;
   for (let i = 1; i <= remain; i++) {
     const el = document.createElement('div');
@@ -791,53 +882,132 @@ function renderCalendar(year, month) {
     grid.appendChild(el);
   }
 
-  // 統計
-  document.getElementById('statDays').textContent = totalDays;
+  document.getElementById('statDays').textContent  = totalDays;
   document.getElementById('statTotal').textContent = totalHours.toFixed(1);
-  document.getElementById('statAvg').textContent =
+  document.getElementById('statAvg').textContent   =
     totalDays ? (totalHours / totalDays).toFixed(1) : '0.0';
 }
 
-// ── 流水明細 ──────────────────────────────────────────────
+// ── 流水明細（月份分組） ──────────────────────────────────
 function renderLog() {
   const data = loadData();
   const list = document.getElementById('recordsList');
-  const sorted = Object.entries(data).sort((a,b) => b[0].localeCompare(a[0]));
   list.innerHTML = '';
+
+  const sorted = Object.entries(data).sort((a,b) => b[0].localeCompare(a[0]));
   if (sorted.length === 0) {
     list.innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--taupe);font-size:14px;font-style:italic;">尚無紀錄</div>';
     return;
   }
-  sorted.forEach(([k, rec]) => {
-    const [y,m,d] = k.split('-');
-    const dow = new Date(+y,+m-1,+d).getDay();
-    const hrs = (rec.in && rec.out) ? calcHours(rec.in, rec.out).toFixed(1) : '—';
 
-    const item = document.createElement('div');
-    item.className = 'record-item';
-    item.innerHTML = `
-      <div class="record-main-row" onclick="toggleAction(this)">
-        <div class="record-dot"></div>
-        <div class="record-main">
-          <div class="record-date">${m}/${d}　星期${DOW_CN[dow]}</div>
-          <div class="record-times">${rec.in||'—'} → ${rec.out||'—'}</div>
-        </div>
-        <div class="record-hrs">${hrs}<span style="font-size:12px;color:var(--sand);font-weight:400">h</span></div>
-        <div class="record-chevron">▼</div>
-      </div>
-      <div class="action-bar">
-        <button class="act-btn act-edit" onclick="editRecord('${k}')">✎ 修改</button>
-        <button class="act-btn act-del"  onclick="showDelConfirm(this)">✕ 刪除</button>
-      </div>
-      <div class="del-confirm">
-        <div class="del-msg">確定刪除 ${m}/${d} 的打卡紀錄？</div>
-        <div class="del-btns">
-          <button class="del-cancel" onclick="hideDelConfirm(this)">取消</button>
-          <button class="del-ok"     onclick="deleteRecord('${k}')">確定刪除</button>
-        </div>
+  // 依月份分組
+  const groups = {};
+  sorted.forEach(([k, rec]) => {
+    const ym = k.slice(0, 7); // "2026-05"
+    if (!groups[ym]) groups[ym] = [];
+    groups[ym].push([k, rec]);
+  });
+
+  const now = new Date();
+  const thisYM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+
+  Object.entries(groups).sort((a,b) => b[0].localeCompare(a[0])).forEach(([ym, recs], gi) => {
+    const [y, m] = ym.split('-');
+    const isCurrentMonth = ym === thisYM;
+
+    // 月份統計
+    let grpDays = 0, grpHours = 0;
+    recs.forEach(([k, rec]) => {
+      if (rec.in && rec.out) { grpDays++; grpHours += calcHours(rec.in, rec.out); }
+    });
+
+    const group = document.createElement('div');
+    group.className = 'month-group';
+
+    // 分隔線（第一組不加）
+    if (gi > 0) {
+      const div = document.createElement('div');
+      div.className = 'month-divider';
+      list.appendChild(div);
+    }
+
+    // 月份標題列（可點擊折疊）
+    const header = document.createElement('div');
+    header.className = 'month-group-header';
+    header.innerHTML = `
+      <div class="month-group-title">${+m} 月　${y}</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="month-group-meta">${grpDays} 天　${grpHours.toFixed(1)}h</div>
+        <div style="font-size:10px;color:var(--taupe);transition:transform 0.2s" class="grp-arrow">${isCurrentMonth ? '▲' : '▼'}</div>
       </div>
     `;
-    list.appendChild(item);
+
+    // 紀錄內容容器
+    const body = document.createElement('div');
+    body.className = 'month-group-body';
+    // 當月預設展開，其他月份預設折疊
+    if (!isCurrentMonth) {
+      body.classList.add('collapsed');
+      body.style.maxHeight = '0px';
+      header.querySelector('.grp-arrow').textContent = '▶';
+    } else {
+      body.style.maxHeight = '2000px';
+    }
+
+    // 點擊切換折疊
+    header.addEventListener('click', () => {
+      const isCollapsed = body.classList.contains('collapsed');
+      const arrow = header.querySelector('.grp-arrow');
+      if (isCollapsed) {
+        body.classList.remove('collapsed');
+        body.style.maxHeight = body.scrollHeight + 200 + 'px';
+        arrow.textContent = '▲';
+      } else {
+        body.style.maxHeight = body.scrollHeight + 'px';
+        requestAnimationFrame(() => {
+          body.style.maxHeight = '0px';
+          body.classList.add('collapsed');
+          arrow.textContent = '▶';
+        });
+      }
+    });
+
+    // 每筆紀錄
+    recs.forEach(([k, rec]) => {
+      const [ky, km, kd] = k.split('-');
+      const dow = new Date(+ky, +km-1, +kd).getDay();
+      const hrs = (rec.in && rec.out) ? calcHours(rec.in, rec.out).toFixed(1) : '—';
+
+      const item = document.createElement('div');
+      item.className = 'record-item';
+      item.innerHTML = `
+        <div class="record-main-row" onclick="toggleAction(this)">
+          <div class="record-dot"></div>
+          <div class="record-main">
+            <div class="record-date">${+km}/${+kd}　星期${DOW_CN[dow]}</div>
+            <div class="record-times">${rec.in||'—'} → ${rec.out||'—'}</div>
+          </div>
+          <div class="record-hrs">${hrs}<span style="font-size:12px;color:var(--sand);font-weight:400">h</span></div>
+          <div class="record-chevron">▼</div>
+        </div>
+        <div class="action-bar">
+          <button class="act-btn act-edit" onclick="editRecord('${k}')">✎ 修改</button>
+          <button class="act-btn act-del"  onclick="showDelConfirm(this)">✕ 刪除</button>
+        </div>
+        <div class="del-confirm">
+          <div class="del-msg">確定刪除 ${+km}/${+kd} 的打卡紀錄？</div>
+          <div class="del-btns">
+            <button class="del-cancel" onclick="hideDelConfirm(this)">取消</button>
+            <button class="del-ok"     onclick="deleteRecord('${k}')">確定刪除</button>
+          </div>
+        </div>
+      `;
+      body.appendChild(item);
+    });
+
+    group.appendChild(header);
+    group.appendChild(body);
+    list.appendChild(group);
   });
 }
 
@@ -864,8 +1034,7 @@ function deleteRecord(key) {
   const data = loadData();
   delete data[key];
   saveData(data);
-  const now = new Date();
-  renderCalendar(now.getFullYear(), now.getMonth());
+  renderCalendar(calYear, calMonth);
   renderLog();
   if (key === todayKey()) updateTodayDisplay({});
   showToast('已刪除該筆紀錄');
@@ -914,8 +1083,7 @@ function saveManual() {
   if (outT) data[date].out = outT;
   saveData(data);
   closeModal();
-  const now = new Date();
-  renderCalendar(now.getFullYear(), now.getMonth());
+  renderCalendar(calYear, calMonth);
   renderLog();
   if (date === todayKey() || origKey === todayKey()) updateTodayDisplay(data[date]||{});
   showToast(origKey ? '✓ 紀錄已修改' : '✓ 補打卡已儲存');
