@@ -687,12 +687,13 @@ function init() {
   if (action === 'in' || action === 'out') {
     const rec = loadData()[tk] || {};
     if (action === 'in' && rec.in) {
+      // 進入卡：已打過，顯示原時間，不覆蓋
       showAutoPunch('already', 'in', rec.in);
-    } else if (action === 'out' && rec.out) {
-      showAutoPunch('already', 'out', rec.out);
     } else if (action === 'out' && !rec.in) {
+      // 離開卡：尚未打進入卡，提示錯誤
       showAutoPunch('error', 'out', null);
     } else {
+      // 進入卡（首次）或離開卡（每次都覆蓋，取最後一次）
       punch(action, true);
     }
     history.replaceState({}, '', window.location.pathname);
@@ -746,7 +747,8 @@ function updateTodayDisplay(today) {
   }
 
   document.getElementById('btnIn').disabled  = !!today.in;
-  document.getElementById('btnOut').disabled = !today.in || !!today.out;
+  // 離開卡：有進入卡就可按，不管是否已打過（可重複更新）
+  document.getElementById('btnOut').disabled = !today.in;
 }
 
 // ── 打卡動作 ──────────────────────────────────────────────
